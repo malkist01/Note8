@@ -1,0 +1,143 @@
+name: Build Floppy Kernel (FloppyTune)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply_tweaks:
+        description: "Tier 1 defconfig degisiklikleri (BBR vb.) - onerilen"
+        type: boolean
+        default: true
+      aggressive:
+        description: "Tier 2: guvenlik/performans takasi (SW PAN + Spectre kapat) - RISKLI"
+        type: boolean
+        default: false
+      device:
+        description: "Hedef cihaz"
+        type: choice
+        options: [mitrinket, ginkgo]
+        default: mitrinket
+      ksu:
+        description: "KernelSU-Next + SUSFS dahil et"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Disk bosalt
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /usr/local/share/boost /usr/share/swift || true
+          sudo apt-get clean
+          df -h /
+
+      - name: Kaynagi indir
+        uses: actions/checkout@v4
+        with:
+          path: kernel
+          fetch-depth: 1
+
+      - name: Bagimliliklar
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends lz4 brotli flex bison bc cpio kmod ccache zip unzip libtinfo5 libssl-dev python3 git curl make binutils-aarch64-linux-gnu
+
+      - name: Build scriptini ortama uyarla
+        working-directory: kernel
+        run: |
+          ls -la build/ build/scripts/
+          sed -i 's/^LOG_UPLOAD=1/LOG_UPLOAD=0/' build/ckbuild.sh
+          grep -n '^LOG_UPLOAD=' build/ckbuild.sh
+          sed -i "s|curl -F'file=@log.txt' http://0x0.st|true|g" build/scripts/post.sh build/scripts/upload.sh
+          echo "kalan 0x0.st referanslari:"
+          grep -rn "0x0.st" build/scripts/ || echo "  yok"
+          : > "$GITHUB_WORKSPACE/chat"
+          : > "$GITHUB_WORKSPACE/chat_test"
+          : > "$GITHUB_WORKSPACE/bot_token"
+
+      - name: Tier 1 - defconfig
+        if: ${{ inputs.apply_tweaks }}
+        working-directory: kernel
+        run: |
+          C=arch/arm64/configs/vendor/trinket-perf_defconfig
+          scripts/config --file $C --enable  CONFIG_TCP_CONG_BBR
+          scripts/config --file $C --disable CONFIG_DEFAULT_CUBIC
+          scripts/config --file $C --enable  CONFIG_DEFAULT_BBR
+          scripts/config --file $C --enable  CONFIG_NET_SCH_FQ
+          scripts/config --file $C --enable  CONFIG_CRYPTO_ZSTD
+          scripts/config --file $C --disable CONFIG_ZRAM_DEDUP
+          scripts/config --file $C --enable  CONFIG_SUSPEND_SKIP_SYNC
+          scripts/config --file $C --disable CONFIG_F2FS_STAT_FS
+          # --- v3.2 (2026-08-05): olculmus ek degisiklikler ---
+          # INIT_ON_ALLOC: kernel her bellek ayriminda sayfayi sifirliyordu.
+          # Tipik yukte ~%1-2, ayrim-yogun iste %5-7 maliyet. Zygote fork ve
+          # uygulama acilisi dogrudan hizlanir (kullanicinin 1. onceligi).
+          # Bedeli: baslatilmamis-bellek bilgi sizintisina karsi koruma gider.
+          scripts/config --file $C --disable CONFIG_INIT_ON_ALLOC_DEFAULT_ON
+          # DEBUG_LIST: her list_add/list_del'de butunluk kontrolu. Saf hata
+          # ayiklama yuku, guvenlik etkisi yok.
+          scripts/config --file $C --disable CONFIG_DEBUG_LIST
+          # Bu telefonda donanim karsiligi OLMAYAN suruculer (kullanici teyit etti:
+          # TV tuner yok, oyun kolu yok, USB OTG kullanmiyor).
+          scripts/config --file $C --disable CONFIG_MEDIA_DIGITAL_TV_SUPPORT
+          # !!! CONFIG_SND_USB_AUDIO KAPATILAMAZ - build #3 link asamasinda coktu:
+          # !!!   ld.lld: undefined symbol: find_snd_usb_substream
+          # !!!   ld.lld: undefined symbol: snd_usb_enable_audio_stream
+          # !!! QCOM'un uaudio QMI servisi (techpack/audio) bu sembollere kosulsuz
+          # !!! bagimli. USB ses kullanilmasa da derlemede kalmali.
+          scripts/config --file $C --disable CONFIG_JOYSTICK_XPAD
+          scripts/config --file $C --disable CONFIG_HID_STEAM
+          scripts/config --file $C --disable CONFIG_HID_MAGICMOUSE
+          scripts/config --file $C --disable CONFIG_HID_APPLE
+          scripts/config --file $C --disable CONFIG_HID_WACOM
+          echo "=== v3.2 sonuc ==="
+          grep -E "INIT_ON_ALLOC|DEBUG_LIST|DIGITAL_TV|SND_USB_AUDIO|XPAD|HID_STEAM|HID_APPLE" $C || true
+          echo "=== sonuc ==="
+          grep -E "TCP_CONG_BBR|DEFAULT_BBR|DEFAULT_CUBIC|NET_SCH_FQ=|CRYPTO_ZSTD|ZRAM_DEDUP|SUSPEND_SKIP_SYNC|F2FS_STAT_FS" $C
+
+      - name: Tier 2 - agresif (opsiyonel)
+        if: ${{ inputs.aggressive }}
+        working-directory: kernel
+        run: |
+          C=arch/arm64/configs/vendor/trinket-perf_defconfig
+          scripts/config --file $C --disable CONFIG_ARM64_SW_TTBR0_PAN
+          scripts/config --file $C --disable CONFIG_HARDEN_BRANCH_PREDICTOR
+          grep -E "SW_TTBR0_PAN|HARDEN_BRANCH_PREDICTOR" $C
+
+      - name: Derle
+        working-directory: kernel
+        env:
+          WP: ${{ github.workspace }}
+        run: |
+          OPTS=""
+          if [ "${{ inputs.ksu }}" = "true" ]; then OPTS="k"; fi
+          echo "do_build.sh ${{ inputs.device }} $OPTS"
+          bash do_build.sh "${{ inputs.device }}" "$OPTS"
+
+      - name: Ciktilari listele
+        if: always()
+        run: |
+          echo "--- kernel/build ---"; ls -la "$GITHUB_WORKSPACE/kernel/build" 2>/dev/null || true
+          echo "--- workspace ---";    ls -la "$GITHUB_WORKSPACE" 2>/dev/null || true
+
+      - name: Kernel zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloppyKernel-tuned
+          path: |
+            kernel/build/Floppy_*.zip
+            ${{ github.workspace }}/Floppy_*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Log ve kullanilan config
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-config
+          path: |
+            kernel/log.txt
+            kernel/out/.config
+          if-no-files-found: warn
+          retention-days: 7
