@@ -17,7 +17,7 @@ on:
         options: [mitrinket, ginkgo]
         default: mitrinket
       ksu:
-        description: "KernelSU-Next + SUSFS dahil et"
+        description: "SukiSU + SUSFS dahil et"
         type: boolean
         default: true
 
@@ -111,7 +111,7 @@ jobs:
           WP: ${{ github.workspace }}
         run: |
           OPTS=""
-          if [ "${{ inputs.ksu }}" = "true" ]; then OPTS="k"; fi
+          if [ "${{ inputs.ksu }}" = "true" ]; then OPTS="s"; fi
           echo "do_build.sh ${{ inputs.device }} $OPTS"
           bash do_build.sh "${{ inputs.device }}" "$OPTS"
 
