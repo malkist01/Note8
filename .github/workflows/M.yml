@@ -111,42 +111,6 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-
 
-      # ---------- Apply patches ----------
-      # Semua file patches/*.patch di-apply berurutan (sort alfabet).
-      # Kalau urutan penting, kasih prefix angka: 01-foo.patch, 02-bar.patch.
-      # Strict: --check SEMUA file dulu, baru apply. Gagal = fail sekalian,
-      # tanpa fallback fuzz dan tanpa copy header manual.
-      - name: Apply patches
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          PATCHES=(patches/*.patch)
-
-          (( ${#PATCHES[@]} > 0 )) \
-            || { echo "❌ Tidak ada patch di patches/"; exit 1; }
-
-          echo "📦 ${#PATCHES[@]} patch ditemukan:"
-          printf '   - %s\n' "${PATCHES[@]}"
-
-          # Apply berurutan: check + apply per file, fail fast.
-          # (Setiap run = checkout fresh, jadi tidak ada istilah setengah jalan.)
-          for p in "${PATCHES[@]}"; do
-            git apply --check --whitespace=nowarn "$p" \
-              || { echo "❌ Patch tidak apply bersih: $p"; exit 1; }
-            git apply --whitespace=nowarn "$p"
-            echo "✅ Teraplikasi: $p"
-          done
-
-          # Sanity check injeksi (hapus/ubah kalau patch lo bukan injeksi)
-          grep -q "CONFIG_FEATURE_FRAME_INJECTION_SUPPORT := y" \
-            drivers/staging/qcacld-3.0/configs/default_defconfig \
-            || { echo "❌ Flag injeksi tidak aktif"; exit 1; }
-          test -f drivers/staging/qcacld-3.0/core/wma/src/wma_frame_inject.c \
-            || { echo "❌ wma_frame_inject.c hilang"; exit 1; }
-          test -f drivers/staging/qcacld-3.0/core/hdd/src/wlan_hdd_frame_inject.c \
-            || { echo "❌ wlan_hdd_frame_inject.c hilang"; exit 1; }
-          echo "✅ Verifikasi injeksi OK"
-
       - name: Fix Script Permissions
         run: |
           chmod +x build/ckbuild.sh
