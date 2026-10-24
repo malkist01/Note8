@@ -1,0 +1,204 @@
+name: Build FloppyKernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_device:
+        description: 'Device (ginkgo | laurel_sprout | mitrinket)'
+        required: false
+        default: 'ginkgo'
+      build_flags:
+        description: 'ckbuild flags (contoh: "x c" = XXKSU + clean)'
+        required: false
+        default: 'x'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    env:
+      LOG_UPLOAD: "0"
+      WP: /home/runner
+      # Clang 23.0.1 (r614150) — sesuai official FloppyKernel
+      CLANG_VER: clang-r614150
+      CLANG_COMMIT: 131f4e02e5889bfd7611eb0f3aad048efa7aed81
+      CLANG_BASE: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      # ============================================================
+      # Cache toolchains dir — supaya run berikutnya skip download total
+      # ============================================================
+      - name: Restore toolchain cache
+        id: tc-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/toolchains
+          key: tc-aosp-${{ env.CLANG_VER }}-${{ runner.os }}
+          restore-keys: |
+            tc-aosp-${{ env.CLANG_VER }}-
+            tc-aosp-
+
+      # ============================================================
+      # Pre-download AOSP Clang 23.0.1 (r614150)
+      # Kalau folder sudah ada (dari cache), skip total.
+      # ============================================================
+      - name: Pre-populate AOSP Clang ${{ env.CLANG_VER }}
+        run: |
+          set -euo pipefail
+
+          AC_DIR="$WP/toolchains/aospclang"
+
+          if [[ -d "$AC_DIR" && -x "$AC_DIR/bin/clang" ]]; then
+            echo "✅ Clang sudah ada di cache: $AC_DIR"
+            "$AC_DIR/bin/clang" --version | head -n1
+            exit 0
+          fi
+
+          echo "⬇️  Downloading AOSP Clang $CLANG_VER (commit $CLANG_COMMIT)..."
+          mkdir -p "$AC_DIR"
+          TMP_TAR="$(mktemp -d)/clang.tar.gz"
+
+          URL="$CLANG_BASE/$CLANG_COMMIT/$CLANG_VER.tar.gz"
+          echo "   URL: $URL"
+
+          for i in 1 2 3; do
+            if curl -fLSs --retry 3 --retry-delay 5 -o "$TMP_TAR" "$URL"; then
+              echo "✅ Download OK (attempt $i)"
+              break
+            fi
+            echo "⚠️ Attempt $i gagal, retry..."
+            [[ "$i" == "3" ]] && { echo "❌ Download gagal total"; exit 1; }
+            sleep 10
+          done
+
+          echo "📦 Extracting..."
+          tar -xf "$TMP_TAR" -C "$AC_DIR"
+          rm -f "$TMP_TAR"
+
+          touch "$AC_DIR/bin/aarch64-linux-gnu-elfedit"
+          chmod +x "$AC_DIR/bin/aarch64-linux-gnu-elfedit"
+          touch "$AC_DIR/bin/arm-linux-gnueabi-elfedit"
+          chmod +x "$AC_DIR/bin/arm-linux-gnueabi-elfedit"
+
+          test -x "$AC_DIR/bin/clang" || { echo "❌ bin/clang tidak ada"; exit 1; }
+          echo "✅ Clang siap:"
+          "$AC_DIR/bin/clang" --version | head -n1
+
+      # ---------- Cache ccache ----------
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      # ---------- Apply patches ----------
+      # Semua file patches/*.patch di-apply berurutan (sort alfabet).
+      # Kalau urutan penting, kasih prefix angka: 01-foo.patch, 02-bar.patch.
+      # Strict: --check SEMUA file dulu, baru apply. Gagal = fail sekalian,
+      # tanpa fallback fuzz dan tanpa copy header manual.
+      - name: Apply patches
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          PATCHES=(patches/*.patch)
+
+          (( ${#PATCHES[@]} > 0 )) \
+            || { echo "❌ Tidak ada patch di patches/"; exit 1; }
+
+          echo "📦 ${#PATCHES[@]} patch ditemukan:"
+          printf '   - %s\n' "${PATCHES[@]}"
+
+          # Apply berurutan: check + apply per file, fail fast.
+          # (Setiap run = checkout fresh, jadi tidak ada istilah setengah jalan.)
+          for p in "${PATCHES[@]}"; do
+            git apply --check --whitespace=nowarn "$p" \
+              || { echo "❌ Patch tidak apply bersih: $p"; exit 1; }
+            git apply --whitespace=nowarn "$p"
+            echo "✅ Teraplikasi: $p"
+          done
+
+          # Sanity check injeksi (hapus/ubah kalau patch lo bukan injeksi)
+          grep -q "CONFIG_FEATURE_FRAME_INJECTION_SUPPORT := y" \
+            drivers/staging/qcacld-3.0/configs/default_defconfig \
+            || { echo "❌ Flag injeksi tidak aktif"; exit 1; }
+          test -f drivers/staging/qcacld-3.0/core/wma/src/wma_frame_inject.c \
+            || { echo "❌ wma_frame_inject.c hilang"; exit 1; }
+          test -f drivers/staging/qcacld-3.0/core/hdd/src/wlan_hdd_frame_inject.c \
+            || { echo "❌ wlan_hdd_frame_inject.c hilang"; exit 1; }
+          echo "✅ Verifikasi injeksi OK"
+
+      - name: Fix Script Permissions
+        run: |
+          chmod +x build/ckbuild.sh
+          chmod +x build/scripts/*.sh 2>/dev/null || true
+          chmod +x build/lib/*.sh 2>/dev/null || true
+
+      # ============================================================
+      # Build — tc.sh akan skip download karena aospclang/ sudah ada
+      # ============================================================
+      - name: Build Kernel
+        run: |
+          set -o pipefail
+
+          DEVICE="${{ inputs.target_device }}"
+          FLAGS="${{ inputs.build_flags }}"
+
+          echo "🚀 Building FloppyKernel"
+          echo "   Device : $DEVICE"
+          echo "   Flags  : $FLAGS"
+          echo "   WP     : $WP"
+          echo "   Cache  : ${{ steps.tc-cache.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
+          echo "   Clang  : $CLANG_VER (pre-populated)"
+
+          # shellcheck disable=SC2086
+          bash build/ckbuild.sh "$DEVICE" $FLAGS 2>&1 | tee build.log
+
+      # ============================================================
+      # Save cache — SELALU, biar run berikutnya HIT
+      # ============================================================
+      - name: Save toolchain cache
+        if: always() && steps.tc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/toolchains
+          key: tc-aosp-${{ env.CLANG_VER }}-${{ runner.os }}
+
+      # ---------- Artifacts ----------
+      - name: Upload Kernel Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloppyKernel-${{ inputs.target_device }}-${{ inputs.build_flags }}
+          path: build/Floppy_*.zip
+          if-no-files-found: error
+          overwrite: true
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: warn
+          overwrite: true
+          
