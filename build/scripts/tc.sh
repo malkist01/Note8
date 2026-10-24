@@ -45,7 +45,7 @@ fi
 
 # Pick aosp, proton, rm69, lolz, slim, greenforce, zyc, rv, custom
 if [[ -z "$CLANG_TYPE" ]]; then
-    CLANG_TYPE="aosp"
+    CLANG_TYPE="greenforce"
 else
     log_info "Overriding default toolchain"
 fi
