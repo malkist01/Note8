@@ -52,12 +52,12 @@ jobs:
           # Configure ccache parameters for optimal size (10GB)
           ccache -M 10G
           
-          # Run the build script for unified mitrinket target with the 'x' (XXKSU-SUSFS) option
+          # Run the build script for unified mitrinket target with the 'k' (KerneSU-Next-SUSFS) option
           # Also add 't' flag for Telegram upload if credentials are provided
           if [ -f ../bot_token ]; then
-            ./do_build.sh mitrinket xt
+            ./do_build.sh mitrinket kt
           else
-            ./do_build.sh mitrinket x
+            ./do_build.sh mitrinket k
           fi
 
       - name: Unpack Flashable Zip
@@ -68,5 +68,5 @@ jobs:
       - name: Upload Kernel Flashable Zip
         uses: actions/upload-artifact@v4
         with:
-          name: FloppyKernel-XXKSU-SUSFS-mitrinket
+          name: FloppyKernel-KernelSU-Next-SUSFS-mitrinket
           path: build/unpacked/
