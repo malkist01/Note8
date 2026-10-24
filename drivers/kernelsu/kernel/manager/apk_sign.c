@@ -23,9 +23,21 @@
 #include "uapi/app_profile.h"
 #include "klog.h" // IWYU pragma: keep
 
+#include "manager_sign.h"
+
 struct sdesc {
 	struct shash_desc shash;
 	char ctx[];
+};
+
+static apk_sign_key_t apk_sign_keys[] = {
+	{ EXPECTED_SIZE_NEXT, EXPECTED_HASH_NEXT }, // Next
+	{ EXPECTED_SIZE_WILD, EXPECTED_HASH_WILD }, // Wild
+	{ EXPECTED_SIZE_ENJOY, EXPECTED_HASH_ENJOY }, // Enjoy
+	{ EXPECTED_SIZE_OFFICIAL, EXPECTED_HASH_OFFICIAL }, // Official
+	{ EXPECTED_SIZE_RSUNTK, EXPECTED_HASH_RSUNTK }, // RKSU
+	{ EXPECTED_SIZE_5EC1CFF, EXPECTED_HASH_5EC1CFF }, // MKSU
+	{ EXPECTED_SIZE_KOWX712, EXPECTED_HASH_KOWX712 } // KowSU
 };
 
 static struct sdesc *init_sdesc(struct crypto_shash *alg)
@@ -366,5 +378,5 @@ int get_pkg_from_apk_dir_path(char *pkg, const char *path)
 
 bool is_manager_apk(char *path)
 {
-	return check_v2_signature(path, EXPECTED_MANAGER_SIZE, EXPECTED_MANAGER_HASH);
+	return check_v2_signature(path);
 }
