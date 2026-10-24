@@ -1,168 +1,72 @@
-name: Build FloppyKernel
+name: Build XXKSU-SUSFS Kernel
 
 on:
-  workflow_dispatch:
-    inputs:
-      target_device:
-        description: 'Device (ginkgo | laurel_sprout | mitrinket)'
-        required: false
-        default: 'ginkgo'
-      build_flags:
-        description: 'ckbuild flags (contoh: "x c" = XXKSU + clean)'
-        required: false
-        default: 'x'
-
-permissions:
-  contents: read
-
-concurrency:
-  group: kernel-build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-defaults:
-  run:
-    shell: bash
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+  push:
+    branches:
+      - floppy-unity # Triggers automatically when you push to the floppy-unity branch
 
 jobs:
   build:
+    name: Build Kernel (XXKSU-SUSFS)
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
-
-    env:
-      LOG_UPLOAD: "0"
-      WP: /home/runner
-      # Clang 23.0.1 (r614150) — sesuai official FloppyKernel
-      CLANG_VER: clang-r614150
-      CLANG_COMMIT: 131f4e02e5889bfd7611eb0f3aad048efa7aed81
-      CLANG_BASE: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive
-
     steps:
-      - name: Checkout
+      - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: 'recursive'
           fetch-depth: 1
 
-      # ============================================================
-      # Cache toolchains dir — supaya run berikutnya skip download total
-      # ============================================================
-      - name: Restore toolchain cache
-        id: tc-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: /home/runner/toolchains
-          key: tc-aosp-${{ env.CLANG_VER }}-${{ runner.os }}
-          restore-keys: |
-            tc-aosp-${{ env.CLANG_VER }}-
-            tc-aosp-
-
-      # ============================================================
-      # Pre-download AOSP Clang 23.0.1 (r614150)
-      # Kalau folder sudah ada (dari cache), skip total.
-      # ============================================================
-      - name: Pre-populate AOSP Clang ${{ env.CLANG_VER }}
+      - name: Install Build Dependencies
         run: |
-          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 wget
 
-          AC_DIR="$WP/toolchains/aospclang"
-
-          if [[ -d "$AC_DIR" && -x "$AC_DIR/bin/clang" ]]; then
-            echo "✅ Clang sudah ada di cache: $AC_DIR"
-            "$AC_DIR/bin/clang" --version | head -n1
-            exit 0
-          fi
-
-          echo "⬇️  Downloading AOSP Clang $CLANG_VER (commit $CLANG_COMMIT)..."
-          mkdir -p "$AC_DIR"
-          TMP_TAR="$(mktemp -d)/clang.tar.gz"
-
-          URL="$CLANG_BASE/$CLANG_COMMIT/$CLANG_VER.tar.gz"
-          echo "   URL: $URL"
-
-          for i in 1 2 3; do
-            if curl -fLSs --retry 3 --retry-delay 5 -o "$TMP_TAR" "$URL"; then
-              echo "✅ Download OK (attempt $i)"
-              break
-            fi
-            echo "⚠️ Attempt $i gagal, retry..."
-            [[ "$i" == "3" ]] && { echo "❌ Download gagal total"; exit 1; }
-            sleep 10
-          done
-
-          echo "📦 Extracting..."
-          tar -xf "$TMP_TAR" -C "$AC_DIR"
-          rm -f "$TMP_TAR"
-
-          touch "$AC_DIR/bin/aarch64-linux-gnu-elfedit"
-          chmod +x "$AC_DIR/bin/aarch64-linux-gnu-elfedit"
-          touch "$AC_DIR/bin/arm-linux-gnueabi-elfedit"
-          chmod +x "$AC_DIR/bin/arm-linux-gnueabi-elfedit"
-
-          test -x "$AC_DIR/bin/clang" || { echo "❌ bin/clang tidak ada"; exit 1; }
-          echo "✅ Clang siap:"
-          "$AC_DIR/bin/clang" --version | head -n1
-
-      # ---------- Cache ccache ----------
-      - name: Restore ccache
+      - name: Setup Cache (ccache & toolchains)
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
-          key: ccache-${{ runner.os }}-${{ github.sha }}
+          path: |
+            ~/.ccache
+            toolchains
+          key: ${{ runner.os }}-kernel-build-${{ github.sha }}
           restore-keys: |
-            ccache-${{ runner.os }}-
+            ${{ runner.os }}-kernel-build-
 
-      - name: Fix Script Permissions
+      - name: Configure Telegram Secrets
+        env:
+          TG_BOT_TOKEN: 8691384652:AAHbKtOpbMp-Kc9JvKyil4aPsMfo5hdA-F8
+          TG_CHAT_ID: -5173179904
         run: |
-          chmod +x build/ckbuild.sh
-          chmod +x build/scripts/*.sh 2>/dev/null || true
-          chmod +x build/lib/*.sh 2>/dev/null || true
+          if [ -n "$TG_BOT_TOKEN" ] && [ -n "$TG_CHAT_ID" ]; then
+            echo "$TG_BOT_TOKEN" > ../bot_token
+            echo "$TG_CHAT_ID" > ../chat_test
+          fi
 
-      # ============================================================
-      # Build — tc.sh akan skip download karena aospclang/ sudah ada
-      # ============================================================
-      - name: Build Kernel
+      - name: Compile Kernel
         run: |
-          set -o pipefail
-
-          DEVICE="${{ inputs.target_device }}"
-          FLAGS="${{ inputs.build_flags }}"
-
-          echo "🚀 Building FloppyKernel"
-          echo "   Device : $DEVICE"
-          echo "   Flags  : $FLAGS"
-          echo "   WP     : $WP"
-          echo "   Cache  : ${{ steps.tc-cache.outputs.cache-hit == 'true' && 'HIT' || 'MISS' }}"
-          echo "   Clang  : $CLANG_VER (pre-populated)"
-
-          # shellcheck disable=SC2086
-          bash build/ckbuild.sh "$DEVICE" $FLAGS 2>&1 | tee build.log
-
-      # ============================================================
-      # Save cache — SELALU, biar run berikutnya HIT
-      # ============================================================
-      - name: Save toolchain cache
-        if: always() && steps.tc-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: /home/runner/toolchains
-          key: tc-aosp-${{ env.CLANG_VER }}-${{ runner.os }}
-
-      # ---------- Artifacts ----------
-      - name: Upload Kernel Artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: FloppyKernel-${{ inputs.target_device }}-${{ inputs.build_flags }}
-          path: build/Floppy_*.zip
-          if-no-files-found: error
-          overwrite: true
-
-      - name: Upload Build Log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-          if-no-files-found: warn
-          overwrite: true
+          # Set toolchain type to aosp (the script will download it automatically)
+          export CLANG_TYPE=aosp
+          # Set WP (workspace path) to the current directory (inside workspace for caching)
+          export WP=$(pwd)
           
+          # Configure ccache parameters for optimal size (10GB)
+          ccache -M 10G
+          
+          # Run the build script for unified mitrinket target with the 'x' (XXKSU-SUSFS) option
+          # Also add 't' flag for Telegram upload if credentials are provided
+          if [ -f ../bot_token ]; then
+            ./do_build.sh mitrinket xt
+          else
+            ./do_build.sh mitrinket x
+          fi
+
+      - name: Unpack Flashable Zip
+        run: |
+          mkdir -p build/unpacked
+          unzip build/Floppy_*.zip -d build/unpacked
+
+      - name: Upload Kernel Flashable Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloppyKernel-XXKSU-SUSFS-mitrinket
+          path: build/unpacked/
