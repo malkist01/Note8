@@ -55,9 +55,9 @@ jobs:
           # Run the build script for unified mitrinket target with the 'k' (KerneSU-Next-SUSFS) option
           # Also add 't' flag for Telegram upload if credentials are provided
           if [ -f ../bot_token ]; then
-            ./do_build.sh mitrinket kt
+            ./do_build.sh mitrinket xt
           else
-            ./do_build.sh mitrinket k
+            ./do_build.sh mitrinket x
           fi
 
       - name: Unpack Flashable Zip
@@ -68,5 +68,5 @@ jobs:
       - name: Upload Kernel Flashable Zip
         uses: actions/upload-artifact@v4
         with:
-          name: FloppyKernel-KernelSU-Next-SUSFS-mitrinket
+          name: FloppyKernel-XXKSU-SUSFS-mitrinket
           path: build/unpacked/
