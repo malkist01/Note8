@@ -31,6 +31,7 @@
 #include <linux/susfs_def.h>
 #include <linux/workqueue.h>
 #endif
+#include "compat/syscall_no.h"
 
 static inline void ksu_set_file_immutable(const char *path_name, bool immutable)
 {
@@ -93,21 +94,8 @@ static int handle_zygote_next_setresuid(uid_t new_uid)
         goto do_susfs_work;
     }
 
-    // manager NEVER use zygote next!
-
-    // we should not umount for webview zygote
-    if (unlikely(new_uid == WEBVIEW_ZYGOTE_UID)) {
-        if (ksu_webview_zygote_umount_enabled) {
-            susfs_set_current_proc_no_su();
-            susfs_set_current_proc_umounted();
-            susfs_set_current_proc_umounted_for_zygote_next();
-            goto do_susfs_work;
-        }
-        susfs_set_current_proc_no_su();
-        return 0;
-    }
-
     // Check if spawned process is normal user app and needs to be umounted
+    // Now app_profile for webview_zygote is available in KernelSU manager
     if (likely(is_appuid(new_uid) && ksu_uid_should_umount(new_uid))) {
         susfs_set_current_proc_no_su();
         susfs_set_current_proc_umounted();
@@ -120,7 +108,7 @@ static int handle_zygote_next_setresuid(uid_t new_uid)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
         if (current->seccomp.mode == SECCOMP_MODE_FILTER && current->seccomp.filter) {
             spin_lock_irq(&current->sighand->siglock);
-            ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
+            ksu_seccomp_allow_cache(current->seccomp.filter, ksu_get_syscall_no(reboot));
             spin_unlock_irq(&current->sighand->siglock);
         }
 #else
@@ -167,7 +155,7 @@ int ksu_handle_setuid(uid_t new_uid, uid_t old_uid)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
         if (current->seccomp.mode == SECCOMP_MODE_FILTER && current->seccomp.filter) {
             spin_lock_irq(&current->sighand->siglock);
-            ksu_seccomp_allow_cache(current->seccomp.filter, __NR_reboot);
+            ksu_seccomp_allow_cache(current->seccomp.filter, ksu_get_syscall_no(reboot));
             spin_unlock_irq(&current->sighand->siglock);
         }
 #else

@@ -1,8 +1,8 @@
 package me.weishu.kernelsu.ui.component.material
 
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.nav.gesture.WindowNavigationEventBridge
 
 @Composable
 fun SearchAppBar(
@@ -243,6 +244,7 @@ fun SearchAppBar(
         inputField = inputField,
         windowInsets = { SearchBarDefaults.fullScreenWindowInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal) },
         content = {
+            WindowNavigationEventBridge()
             val bottomPadding = SearchBarDefaults.fullScreenWindowInsets.asPaddingValues().calculateBottomPadding()
             Box(modifier = Modifier.fillMaxSize()) {
                 if (currentQuery.isNotEmpty()) {
