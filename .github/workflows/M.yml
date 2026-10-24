@@ -45,7 +45,7 @@ jobs:
       - name: Compile Kernel
         run: |
           # Set toolchain type to aosp (the script will download it automatically)
-          export CLANG_TYPE=aosp
+          export CLANG_TYPE=greenforce
           # Set WP (workspace path) to the current directory (inside workspace for caching)
           export WP=$(pwd)
           
