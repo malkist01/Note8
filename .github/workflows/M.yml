@@ -1,4 +1,4 @@
-name: Build XXKSU-SUSFS Kernel
+name: Build XXKSU-Kernel
 
 on:
   workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     name: Build Kernel (XXKSU-SUSFS)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -50,7 +50,7 @@ jobs:
       - name: Compile Kernel
         run: |
           # Set toolchain type to aosp (the script will download it automatically)
-          export CLANG_TYPE=aosp
+          export CLANG_TYPE=custom
           # Set WP (workspace path) to the current directory (inside workspace for caching)
           export WP=$(pwd)
           
