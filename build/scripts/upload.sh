@@ -6,13 +6,13 @@
 ## Telegram info variables
 
 CAPTION_BUILD="Build info:
-*Device*: \`${DEVICE} [${CODENAME}]\`
-*Kernel Version*: \`${LINUX_VER}\`
-*Compiler*: \`${KBUILD_COMPILER_STRING}\`
-*Build host*: \`${BUILD_HOST}\`
-*Commit / Branch*: [($(git rev-parse HEAD | cut -c -7))]($(echo $KERNEL_URL)/commit/$(git rev-parse HEAD)) / \`$(git rev-parse --abbrev-ref HEAD)\`
-*Build variant*: \`${CK_TYPE}\` / \`${BUILD_TYPE}$( [ "$DO_CLEAN" -eq 1 ] && echo " (clean)" || echo " (dirty)")\`
-*Timestamp*: \`${DATE}\`
+*📱 Device*: \`${DEVICE} [${CODENAME}]\`
+*🕊️ Kernel Version*: \`${LINUX_VER}\`
+*⚙️ Compiler*: \`${KBUILD_COMPILER_STRING}\`
+*💻 Build host*: \`${BUILD_HOST}\`
+*💉 Commit / Branch*: [($(git rev-parse HEAD | cut -c -7))]($(echo $KERNEL_URL)/commit/$(git rev-parse HEAD)) / \`$(git rev-parse --abbrev-ref HEAD)\`
+*⚖️ Build variant*: \`${CK_TYPE}\` / \`${BUILD_TYPE}$( [ "$DO_CLEAN" -eq 1 ] && echo " (clean)" || echo " (dirty)")\`
+*⏰ Timestamp*: \`${DATE}\`
 "
 
 # Functions to send file(s) via Telegram's BOT api.
