@@ -218,7 +218,7 @@ ZIP_PATH="$KDIR/build/Floppy_$FK_VER-$CK_TYPE-$CODENAME-$DATE.zip"
 echo -e "\n$(log_info "Build info:")
 - Device: $DEVICE ($CODENAME)
 - Addons: $CK_TYPE
-- FloppyKernel version: $FK_VER
+- TeletubiesKernel version: $FK_VER
 - Linux version: $LINUX_VER
 - Defconfig: $DEFCONFIG
 - Build date: $DATE
