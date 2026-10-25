@@ -2,20 +2,22 @@ name: Build XXKSU-SUSFS Kernel
 
 on:
   workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
-  push:
-    branches:
-      - floppy-unity # Triggers automatically when you push to the floppy-unity branch
 
 jobs:
   build:
     name: Build Kernel (XXKSU-SUSFS)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
           fetch-depth: 1
+
+      - name: Set Timezone
+        run: |
+          sudo rm /etc/localtime
+          sudo ln -s /usr/share/zoneinfo/Asia/Jakarta /etc/localtime          
 
       - name: Install Build Dependencies
         run: |
