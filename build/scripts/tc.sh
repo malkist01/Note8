@@ -15,6 +15,7 @@ RC_URL="https://github.com/kutemeikito/RastaMod69-Clang/releases/download/RastaM
 GC_REPO="https://api.github.com/repos/greenforce-project/greenforce_clang/releases/latest"
 ZC_REPO="https://raw.githubusercontent.com/ZyCromerZ/Clang/refs/heads/main/Clang-main-link.txt"
 RV_REPO="https://api.github.com/repos/Rv-Project/RvClang/releases/latest"
+CUST_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/747f0cceb48f48bf7cf497a3e01af1389266904b/clang-r614150.tar.gz"
 GCC_REPO="https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9"
 GCC64_REPO="https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9"
 
@@ -45,7 +46,7 @@ fi
 
 # Pick aosp, proton, rm69, lolz, slim, greenforce, zyc, rv, custom
 if [[ -z "$CLANG_TYPE" ]]; then
-    CLANG_TYPE="greenforce"
+    CLANG_TYPE="aosp"
 else
     log_info "Overriding default toolchain"
 fi
@@ -142,9 +143,21 @@ get_toolchain() {
         custom)
             toolchain_dir="$CUST_DIR"
             if [[ ! -d "$toolchain_dir" ]]; then
-                log_err "Custom toolchain not found! Aborting..."
-                log_info "Please provide a toolchain at $CUST_DIR or select a different toolchain"
-                exit 1
+                log_info "Custom Clang not found! Cloning to $toolchain_dir..."
+                wget -q --show-progress "$CUST_URL" -O "$WP/clang-r614150.tar.gz"
+                if [[ $? -ne 0 ]]; then
+                    log_err "Download failed! Aborting..."
+                    rm -f "$WP/clang-r614150.tar.gz"
+                    exit 1
+                fi
+                rm -rf clang && mkdir -p "$toolchain_dir" && tar -xf "$WP/clang-r614150.tar.gz" -C "$toolchain_dir"
+                if [[ $? -ne 0 ]]; then
+                    log_err "Extraction failed! Aborting..."
+                    rm -f "$WP/clang-r614150.tar.gz"
+                    exit 1
+                fi
+                rm -f "$WP/clang-r614150.tar.gz"
+                log_info "Custom Clang successfully cloned to $toolchain_dir"
             fi
             ;;
         zyc)
