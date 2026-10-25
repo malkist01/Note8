@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     name: Build Kernel (XXKSU-SUSFS)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
